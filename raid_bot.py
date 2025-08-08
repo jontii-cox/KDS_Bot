@@ -1,10 +1,29 @@
 import discord
-import os
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta
 import asyncio
+import os
+from flask import Flask
+from threading import Thread
 
+# Create Flask app for Render health checks
+app = Flask('')
 
+@app.route('/')
+def home():
+    return "KDS Bot is online! 🎮"
+
+@app.route('/health')
+def health():
+    return {"status": "healthy", "bot": str(bot.user) if bot.is_ready() else "connecting"}
+
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+
+def keep_alive():
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
 
 # Bot setup
 intents = discord.Intents.default()
@@ -34,11 +53,11 @@ SPECIAL_ROLES = [
 @bot.event
 async def on_ready():
     print(f'{bot.user} is online!')
-
+    
     # Start checking for reminders only if not already running
     if not check_events.is_running():
         check_events.start()
-
+    
     # Sync slash commands after starting tasks
     print("Attempting to sync commands...")
     try:
@@ -81,7 +100,7 @@ async def create_event(
     try:
         # Ensure events is properly initialized
         ensure_events_dict()
-
+        
         # Validate event type
         valid_event_types = [
             "Fractals", "Raid", "WvW", "Meta", "Guild Missions", "PvP",
@@ -186,11 +205,11 @@ async def add_special_roles(
     """
     try:
         ensure_events_dict()
-
+        
         if event_id not in events:
             await interaction.response.send_message(f"Event ID {event_id} not found! Use /list_events to see available events.", ephemeral=True)
             return
-
+        
         # Update special role limits (only the ones available in command)
         events[event_id]['special_role_limits'].update({
             'Kite': kite_slots,
@@ -206,21 +225,21 @@ async def add_special_roles(
             'G3': g3_slots,
             'Lamps': lamps_slots
         })
-
+        
         # Update the original message if possible
         try:
             channel = bot.get_channel(events[event_id]['channel_id'])
             message = await channel.fetch_message(events[event_id]['message_id'])
-
+            
             embed = create_event_embed(event_id)
             view = EventView(event_id)
-
+            
             await message.edit(embed=embed, view=view)
             await interaction.response.send_message(f"✅ Special roles added to event: {events[event_id]['name']}", ephemeral=True)
-
+            
         except:
             await interaction.response.send_message(f"✅ Special roles added to event: {events[event_id]['name']} (Original message couldn't be updated)", ephemeral=True)
-
+            
     except Exception as e:
         print(f"Error in add_special_roles: {e}")
         await interaction.response.send_message("Error adding special roles!", ephemeral=True)
@@ -540,34 +559,34 @@ async def check_events():
     try:
         # Ensure events is properly initialized
         ensure_events_dict()
-
+        
         # Make sure events is a dictionary
         if not isinstance(events, dict) or not events:
             return
-
+            
         now = datetime.now()
-
+        
         # Create a copy of events.items() to avoid modification during iteration
         events_copy = dict(events)
-
+        
         for event_id, event in events_copy.items():
             if not isinstance(event, dict):
                 continue
-
+                
             event_time = event.get('datetime')
             if not event_time:
                 continue
-
+            
             # 1 hour reminder
             if not event.get('reminded_1h', False) and now >= event_time - timedelta(hours=1):
                 await send_reminder(event, "1 hour")
                 events[event_id]['reminded_1h'] = True
-
+            
             # 30 minute reminder
             if not event.get('reminded_30m', False) and now >= event_time - timedelta(minutes=30):
                 await send_reminder(event, "30 minutes")
                 events[event_id]['reminded_30m'] = True
-
+                
     except Exception as e:
         print(f"Error in check_events: {e}")
         # Reset events to empty dict if corrupted
@@ -599,31 +618,34 @@ async def list_events(interaction: discord.Interaction):
     try:
         # Ensure events is properly initialized
         ensure_events_dict()
-
+        
         if not events or len(events) == 0:
             await interaction.response.send_message("No events created yet!", ephemeral=True)
             return
-
+        
         embed = discord.Embed(title="📅 Upcoming Events", color=0x0099ff)
-
+        
         for event_id, event in events.items():
             if not isinstance(event, dict):
                 continue
-
+                
             total_participants = len(event.get('participants', {}))
             total_core_slots = sum(event.get('core_role_limits', {}).values())
-
+            
             embed.add_field(
                 name=f"{event.get('name', 'Unknown Event')} (ID: {event_id})",
                 value=f"**Type:** {event.get('type', 'Unknown')}\n**Time:** {event.get('datetime', 'Unknown').strftime('%Y-%m-%d %H:%M') if event.get('datetime') else 'Unknown'}\n**Participants:** {total_participants}/{total_core_slots}",
                 inline=False
             )
-
+        
         await interaction.response.send_message(embed=embed)
     except Exception as e:
         print(f"Error in list_events: {e}")
         await interaction.response.send_message("Error retrieving events!", ephemeral=True)
 
 # Run the bot
-bot.run(os.getenv('BOT_TOKEN'))
-
+if __name__ == "__main__":
+    keep_alive()  # Start Flask server
+    import time
+    time.sleep(2)  # Give Flask time to start
+    bot.run(os.getenv('BOT_TOKEN'))
