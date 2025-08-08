@@ -1,7 +1,10 @@
 import discord
+import os
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta
 import asyncio
+
+
 
 # Bot setup
 intents = discord.Intents.default()
@@ -622,5 +625,5 @@ async def list_events(interaction: discord.Interaction):
         await interaction.response.send_message("Error retrieving events!", ephemeral=True)
 
 # Run the bot
-bot.run(
-    'your_token_here')
+bot.run(os.getenv('BOT_TOKEN'))
+
