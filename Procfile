@@ -1,1 +1,1 @@
-web: python main.py
+web: python raid_bot.py
