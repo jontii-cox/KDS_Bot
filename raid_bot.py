@@ -3,27 +3,6 @@ from discord.ext import commands, tasks
 from datetime import datetime, timedelta
 import asyncio
 import os
-from flask import Flask
-from threading import Thread
-
-# Create Flask app for Render health checks
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "KDS Bot is online! 🎮"
-
-@app.route('/health')
-def health():
-    return {"status": "healthy", "bot": str(bot.user) if bot.is_ready() else "connecting"}
-
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
-
-def keep_alive():
-    t = Thread(target=run_flask)
-    t.daemon = True
-    t.start()
 
 # Bot setup
 intents = discord.Intents.default()
@@ -723,7 +702,5 @@ async def list_events(interaction: discord.Interaction):
 
 # Run the bot
 if __name__ == "__main__":
-    keep_alive()  # Start Flask server
-    import time
-    time.sleep(2)  # Give Flask time to start
+    import os
     bot.run(os.getenv('BOT_TOKEN'))
