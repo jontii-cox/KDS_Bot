@@ -75,174 +75,252 @@ async def on_ready():
 async def test_command(interaction: discord.Interaction):
     await interaction.response.send_message("Bot is working! ✅", ephemeral=True)
 
-@bot.tree.command(name="create_event", description="Create a new event with core roles")
-async def create_event(
-        interaction: discord.Interaction,
-        event_name: str,
-        event_type: str,
-        description: str,
-        event_time: str,
-        # Core roles only (9 parameters + 4 basic = 13 total, well under 25)
-        fill_slots: int = 0,
-        heal_slots: int = 0,
-        qheal_slots: int = 0,
-        aheal_slots: int = 0,
-        powerdps_slots: int = 0,
-        condidps_slots: int = 0,
-        qdps_slots: int = 0,
-        adps_slots: int = 0,
-        tank_slots: int = 0):
+@bot.tree.command(name="create_event", description="Create a new event (interactive setup)")
+async def create_event(interaction: discord.Interaction, event_name: str):
     """
-    Create an event with core roles only (use /add_special_roles after to add special roles)
-    event_type: Choose from Fractals, Raid, WvW, Meta, Guild Missions, PvP, Chill Sessions
-    event_time format: YYYY-MM-DD HH:MM (like 2024-12-25 20:00)
+    Start creating a new event with interactive setup
     """
-    try:
-        # Ensure events is properly initialized
-        ensure_events_dict()
-        
-        # Validate event type
-        valid_event_types = [
-            "Fractals", "Raid", "WvW", "Meta", "Guild Missions", "PvP",
-            "Chill Sessions"
-        ]
-        if event_type not in valid_event_types:
-            await interaction.response.send_message(
-                f"Invalid event type! Choose from: {', '.join(valid_event_types)}",
-                ephemeral=True)
-            return
+    modal = EventSetupModal(event_name)
+    await interaction.response.send_modal(modal)
 
-        # Parse the time
-        event_datetime = datetime.strptime(event_time, "%Y-%m-%d %H:%M")
+class EventSetupModal(discord.ui.Modal, title='Event Setup'):
+    def __init__(self, event_name: str):
+        super().__init__()
+        self.event_name_input.default = event_name
+    
+    event_name_input = discord.ui.TextInput(
+        label='Event Name',
+        placeholder='Enter event name...',
+        max_length=100
+    )
+    
+    description = discord.ui.TextInput(
+        label='Description',
+        placeholder='Enter event description...',
+        style=discord.TextStyle.paragraph,
+        max_length=500
+    )
+    
+    event_time = discord.ui.TextInput(
+        label='Event Time',
+        placeholder='YYYY-MM-DD HH:MM (like 2024-12-25 20:00)',
+        max_length=16
+    )
 
-        # Calculate total core slots
-        core_slots = (fill_slots + heal_slots + qheal_slots + aheal_slots +
-                      powerdps_slots + condidps_slots + qdps_slots +
-                      adps_slots + tank_slots)
-
-        if core_slots == 0:
-            await interaction.response.send_message(
-                "You need at least 1 core role slot!", ephemeral=True)
-            return
-
-        # Create the event
-        event_id = len(events) + 1
-        events[event_id] = {
-            'name': event_name,
-            'type': event_type,
-            'description': description,
-            'datetime': event_datetime,
-            'core_role_limits': {
-                'Fill': fill_slots,
-                'Heal': heal_slots,
-                'Qheal': qheal_slots,
-                'Aheal': aheal_slots,
-                'PowerDPS': powerdps_slots,
-                'CondiDPS': condidps_slots,
-                'QDPS': qdps_slots,
-                'ADPS': adps_slots,
-                'Tank': tank_slots
-            },
-            'special_role_limits': {
-                'Kite': 0,
-                'Cannons': 0,
-                'Reflect': 0,
-                'Tower': 0,
-                'Back Warg': 0,
-                'Hand Kite': 0,
-                'Super Speed': 0,
-                'Throw': 0,
-                'G1': 0,
-                'G2 Backups': 0,
-                'G3': 0,
-                'Lamps': 0,
-                'Kite/Push': 0,
-                'Off Tank': 0,
-                'Portals': 0,
-                'Pylons': 0
-            },
-            'participants': {},  # user_id: {'name': name, 'core_role': role, 'special_role': role or None}
-            'channel_id': interaction.channel.id,
-            'reminded_1h': False,
-            'reminded_30m': False
-        }
-
-        # Create embed message
-        embed = create_event_embed(event_id)
-
-        # Create view with both dropdowns
-        view = EventView(event_id)
-        await interaction.response.send_message(embed=embed, view=view)
-
-        # Get the message to store its ID
-        message = await interaction.original_response()
-        events[event_id]['message_id'] = message.id
-
-    except ValueError:
-        await interaction.response.send_message(
-            "Wrong time format! Use: YYYY-MM-DD HH:MM (like 2024-12-25 20:00)",
-            ephemeral=True)
-
-@bot.tree.command(name="add_special_roles", description="Add special roles to an existing event")
-async def add_special_roles(
-        interaction: discord.Interaction,
-        event_id: int,
-        kite_slots: int = 0,
-        cannons_slots: int = 0,
-        reflect_slots: int = 0,
-        tower_slots: int = 0,
-        back_warg_slots: int = 0,
-        hand_kite_slots: int = 0,
-        super_speed_slots: int = 0,
-        throw_slots: int = 0,
-        g1_slots: int = 0,
-        g2_backups_slots: int = 0,
-        g3_slots: int = 0,
-        lamps_slots: int = 0):
-    """
-    Add special roles to an existing event (12 most common roles)
-    Use /list_events to see event IDs
-    """
-    try:
-        ensure_events_dict()
-        
-        if event_id not in events:
-            await interaction.response.send_message(f"Event ID {event_id} not found! Use /list_events to see available events.", ephemeral=True)
-            return
-        
-        # Update special role limits (only the ones available in command)
-        events[event_id]['special_role_limits'].update({
-            'Kite': kite_slots,
-            'Cannons': cannons_slots,
-            'Reflect': reflect_slots,
-            'Tower': tower_slots,
-            'Back Warg': back_warg_slots,
-            'Hand Kite': hand_kite_slots,
-            'Super Speed': super_speed_slots,
-            'Throw': throw_slots,
-            'G1': g1_slots,
-            'G2 Backups': g2_backups_slots,
-            'G3': g3_slots,
-            'Lamps': lamps_slots
-        })
-        
-        # Update the original message if possible
+    async def on_submit(self, interaction: discord.Interaction):
         try:
-            channel = bot.get_channel(events[event_id]['channel_id'])
-            message = await channel.fetch_message(events[event_id]['message_id'])
+            # Parse the time to validate it
+            event_datetime = datetime.strptime(self.event_time.value, "%Y-%m-%d %H:%M")
             
+            # Create temporary event data
+            temp_event = {
+                'name': self.event_name_input.value,
+                'description': self.description.value,
+                'datetime': event_datetime,
+                'type': None,  # Will be set in next step
+                'core_role_limits': {},
+                'special_role_limits': {},
+                'participants': {},
+                'channel_id': interaction.channel.id,
+                'reminded_1h': False,
+                'reminded_30m': False
+            }
+            
+            # Show event type selection
+            view = EventTypeSelectionView(temp_event)
+            embed = discord.Embed(
+                title="🎮 Step 2: Select Event Type",
+                description=f"**Event:** {temp_event['name']}\n**Description:** {temp_event['description']}\n**Time:** {event_datetime.strftime('%Y-%m-%d %H:%M')}",
+                color=0x0099ff
+            )
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            
+        except ValueError:
+            await interaction.response.send_message("❌ Invalid time format! Use: YYYY-MM-DD HH:MM (like 2024-12-25 20:00)", ephemeral=True)
+
+class EventTypeSelectionView(discord.ui.View):
+    def __init__(self, temp_event):
+        super().__init__(timeout=300)
+        self.temp_event = temp_event
+    
+    @discord.ui.select(
+        placeholder="Choose event type...",
+        options=[
+            discord.SelectOption(label="Fractals", emoji="🔺"),
+            discord.SelectOption(label="Raid", emoji="⚔️"),
+            discord.SelectOption(label="WvW", emoji="🏰"),
+            discord.SelectOption(label="Meta", emoji="🌟"),
+            discord.SelectOption(label="Guild Missions", emoji="🏛️"),
+            discord.SelectOption(label="PvP", emoji="⚡"),
+            discord.SelectOption(label="Chill Sessions", emoji="😎"),
+        ]
+    )
+    async def select_event_type(self, interaction: discord.Interaction, select: discord.ui.Select):
+        self.temp_event['type'] = select.values[0]
+        
+        # Move to role selection
+        view = RoleSetupView(self.temp_event)
+        embed = discord.Embed(
+            title="🎯 Step 3: Add Roles",
+            description=f"**Event:** {self.temp_event['name']}\n**Type:** {self.temp_event['type']}\n**Time:** {self.temp_event['datetime'].strftime('%Y-%m-%d %H:%M')}\n\n**Current Roles:** None yet",
+            color=0x00ff00
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
+
+class RoleSetupView(discord.ui.View):
+    def __init__(self, temp_event):
+        super().__init__(timeout=600)
+        self.temp_event = temp_event
+        self.update_embed_content()
+    
+    def update_embed_content(self):
+        # Create embed content showing current roles
+        core_roles_text = []
+        special_roles_text = []
+        
+        for role, count in self.temp_event['core_role_limits'].items():
+            if count > 0:
+                core_roles_text.append(f"• {role}: {count}")
+        
+        for role, count in self.temp_event['special_role_limits'].items():
+            if count > 0:
+                special_roles_text.append(f"• {role}: {count}")
+        
+        core_text = "\n".join(core_roles_text) if core_roles_text else "None"
+        special_text = "\n".join(special_roles_text) if special_roles_text else "None"
+        
+        return f"**Event:** {self.temp_event['name']}\n**Type:** {self.temp_event['type']}\n**Time:** {self.temp_event['datetime'].strftime('%Y-%m-%d %H:%M')}\n\n**Core Roles:**\n{core_text}\n\n**Special Roles:**\n{special_text}"
+    
+    @discord.ui.select(
+        placeholder="Select a role to add...",
+        options=[
+            # Core roles
+            discord.SelectOption(label="Fill", emoji="👥", description="Core role"),
+            discord.SelectOption(label="Heal", emoji="❤️", description="Core role"),
+            discord.SelectOption(label="Qheal", emoji="💚", description="Core role"),
+            discord.SelectOption(label="Aheal", emoji="💙", description="Core role"),
+            discord.SelectOption(label="PowerDPS", emoji="⚔️", description="Core role"),
+            discord.SelectOption(label="CondiDPS", emoji="🗡️", description="Core role"),
+            discord.SelectOption(label="QDPS", emoji="🏹", description="Core role"),
+            discord.SelectOption(label="ADPS", emoji="🔥", description="Core role"),
+            discord.SelectOption(label="Tank", emoji="🛡️", description="Core role"),
+            # Special roles (most common ones)
+            discord.SelectOption(label="Kite", emoji="🏃", description="Special role"),
+            discord.SelectOption(label="Cannons", emoji="💣", description="Special role"),
+            discord.SelectOption(label="Reflect", emoji="🔄", description="Special role"),
+            discord.SelectOption(label="Tower", emoji="🗼", description="Special role"),
+            discord.SelectOption(label="Back Warg", emoji="🐺", description="Special role"),
+            discord.SelectOption(label="Hand Kite", emoji="✋", description="Special role"),
+            discord.SelectOption(label="Super Speed", emoji="⚡", description="Special role"),
+            discord.SelectOption(label="Throw", emoji="🎯", description="Special role"),
+            discord.SelectOption(label="G1", emoji="1️⃣", description="Special role"),
+            discord.SelectOption(label="G2 Backups", emoji="2️⃣", description="Special role"),
+            discord.SelectOption(label="G3", emoji="3️⃣", description="Special role"),
+            discord.SelectOption(label="Lamps", emoji="💡", description="Special role"),
+        ]
+    )
+    async def select_role(self, interaction: discord.Interaction, select: discord.ui.Select):
+        selected_role = select.values[0]
+        modal = RoleQuantityModal(selected_role, self.temp_event, self)
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label="Finish Event Creation", style=discord.ButtonStyle.green, emoji="✅")
+    async def finish_event(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Check if at least one core role is added
+        total_core_slots = sum(self.temp_event['core_role_limits'].values())
+        if total_core_slots == 0:
+            await interaction.response.send_message("❌ You need at least 1 core role slot!", ephemeral=True)
+            return
+        
+        try:
+            ensure_events_dict()
+            
+            # Create the final event
+            event_id = len(events) + 1
+            events[event_id] = self.temp_event.copy()
+            
+            # Initialize all role limits with defaults
+            all_core_roles = ['Fill', 'Heal', 'Qheal', 'Aheal', 'PowerDPS', 'CondiDPS', 'QDPS', 'ADPS', 'Tank']
+            all_special_roles = ['Kite', 'Cannons', 'Reflect', 'Tower', 'Back Warg', 'Hand Kite', 'Super Speed', 
+                               'Throw', 'G1', 'G2 Backups', 'G3', 'Lamps', 'Kite/Push', 'Off Tank', 'Portals', 'Pylons']
+            
+            for role in all_core_roles:
+                if role not in events[event_id]['core_role_limits']:
+                    events[event_id]['core_role_limits'][role] = 0
+            
+            for role in all_special_roles:
+                if role not in events[event_id]['special_role_limits']:
+                    events[event_id]['special_role_limits'][role] = 0
+            
+            # Create the event embed and post it
             embed = create_event_embed(event_id)
             view = EventView(event_id)
             
-            await message.edit(embed=embed, view=view)
-            await interaction.response.send_message(f"✅ Special roles added to event: {events[event_id]['name']}", ephemeral=True)
+            # Post to the original channel (not ephemeral)
+            channel = interaction.channel
+            message = await channel.send(embed=embed, view=view)
+            events[event_id]['message_id'] = message.id
             
-        except:
-            await interaction.response.send_message(f"✅ Special roles added to event: {events[event_id]['name']} (Original message couldn't be updated)", ephemeral=True)
+            await interaction.response.edit_message(
+                content="✅ **Event Created Successfully!**", 
+                embed=None, 
+                view=None
+            )
             
-    except Exception as e:
-        print(f"Error in add_special_roles: {e}")
-        await interaction.response.send_message("Error adding special roles!", ephemeral=True)
+        except Exception as e:
+            print(f"Error creating event: {e}")
+            await interaction.response.send_message("❌ Error creating event!", ephemeral=True)
+    
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red, emoji="❌")
+    async def cancel_event(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="❌ Event creation cancelled.", embed=None, view=None)
+
+class RoleQuantityModal(discord.ui.Modal, title='Set Role Quantity'):
+    def __init__(self, role_name: str, temp_event: dict, parent_view: RoleSetupView):
+        super().__init__()
+        self.role_name = role_name
+        self.temp_event = temp_event
+        self.parent_view = parent_view
+        self.quantity.label = f'How many {role_name}?'
+    
+    quantity = discord.ui.TextInput(
+        label='Quantity',
+        placeholder='Enter number (e.g., 2)',
+        max_length=2
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            qty = int(self.quantity.value)
+            if qty < 0:
+                await interaction.response.send_message("❌ Quantity must be 0 or positive!", ephemeral=True)
+                return
+            
+            # Determine if it's a core or special role
+            core_roles = ['Fill', 'Heal', 'Qheal', 'Aheal', 'PowerDPS', 'CondiDPS', 'QDPS', 'ADPS', 'Tank']
+            
+            if self.role_name in core_roles:
+                self.temp_event['core_role_limits'][self.role_name] = qty
+            else:
+                self.temp_event['special_role_limits'][self.role_name] = qty
+            
+            # Update the embed
+            embed_content = self.parent_view.update_embed_content()
+            embed = discord.Embed(
+                title="🎯 Step 3: Add Roles",
+                description=embed_content,
+                color=0x00ff00
+            )
+            
+            if qty == 0:
+                embed.add_field(name="✅ Role Removed", value=f"{self.role_name} removed from event", inline=False)
+            else:
+                embed.add_field(name="✅ Role Added", value=f"{self.role_name}: {qty} slots", inline=False)
+            
+            await interaction.response.edit_message(embed=embed, view=self.parent_view)
+            
+        except ValueError:
+            await interaction.response.send_message("❌ Please enter a valid number!", ephemeral=True)
 
 def create_event_embed(event_id):
     """Create the event embed with current participant info"""
