@@ -3,6 +3,30 @@ from discord.ext import commands, tasks
 from datetime import datetime, timedelta
 import asyncio
 import os
+from threading import Thread
+import socket
+
+# Simple HTTP server for Railway
+def run_server():
+    import http.server
+    import socketserver
+    
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(b'KDS Bot is running!')
+    
+    port = int(os.environ.get('PORT', 8080))
+    with socketserver.TCPServer(("", port), Handler) as httpd:
+        print(f"HTTP server running on port {port}")
+        httpd.serve_forever()
+
+def start_server():
+    server_thread = Thread(target=run_server)
+    server_thread.daemon = True
+    server_thread.start()
 
 # Bot setup
 intents = discord.Intents.default()
@@ -715,5 +739,9 @@ async def list_events(interaction: discord.Interaction):
 
 # Run the bot
 if __name__ == "__main__":
-    import os
+    print("Starting KDS Bot...")
+    start_server()  # Start HTTP server for Railway
+    import time
+    time.sleep(2)  # Give server time to start
+    print("Starting Discord bot...")
     bot.run(os.getenv('BOT_TOKEN'))
