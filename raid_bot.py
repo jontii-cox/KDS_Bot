@@ -54,6 +54,19 @@ async def on_ready():
 async def test_command(interaction: discord.Interaction):
     await interaction.response.send_message("Bot is working! ✅", ephemeral=True)
 
+# Force sync command (temporary - remove after fixing)
+@bot.tree.command(name="force_sync", description="Force sync commands (admin only)")
+async def force_sync(interaction: discord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Admin only!", ephemeral=True)
+        return
+    
+    try:
+        await bot.tree.sync()
+        await interaction.response.send_message("✅ Commands force synced!", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Sync failed: {e}", ephemeral=True)
+
 @bot.tree.command(name="create_event", description="Create a new event (interactive setup)")
 async def create_event(interaction: discord.Interaction, event_name: str):
     """
