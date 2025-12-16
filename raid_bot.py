@@ -285,8 +285,24 @@ class RoleSetupView(discord.ui.View):
             )
             
         except Exception as e:
-            print(f"Error creating event: {e}")
-            await interaction.response.send_message("❌ Error creating event!", ephemeral=True)
+                    import traceback
+                    print("Error creating event:")
+                    traceback.print_exc()
+
+                    # Try to show useful info in Discord too
+                    err_text = f"{type(e).__name__}: {e}"
+
+                    # If the interaction can still be edited, do that; otherwise send ephemeral followup
+                    try:
+                        await interaction.response.send_message(
+                            f"❌ Error creating event!\n```{err_text}```",
+                            ephemeral=True
+                        )
+                    except discord.InteractionResponded:
+                        await interaction.followup.send(
+                            f"❌ Error creating event!\n```{err_text}```",
+                            ephemeral=True
+                        )
     
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red, emoji="❌")
     async def cancel_event(self, interaction: discord.Interaction, button: discord.ui.Button):
