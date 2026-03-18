@@ -775,6 +775,9 @@ async def on_ready():
     if not check_events.is_running():
         check_events.start()
 
+    local_commands = bot.tree.get_commands()
+    print(f"Commands in tree before sync ({len(local_commands)}): {[c.name for c in local_commands]}")
+
     print("Syncing commands...")
     try:
         synced = await bot.tree.sync()
