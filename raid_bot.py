@@ -767,10 +767,6 @@ def _role_review_embed(temp: dict) -> discord.Embed:
     embed.set_footer(text=f"Attendance reward: {ticket_val} points")
     return embed
 
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
-
 @bot.event
 async def on_ready():
     bot.start_time = datetime.now()
