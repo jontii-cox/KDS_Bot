@@ -472,6 +472,14 @@ class SpecialRoleSelect(discord.ui.Select):
         await _refresh_event_embed(event, self.event_id)
 
 # ---------------------------------------------------------------------------
+# Bot setup
+# ---------------------------------------------------------------------------
+
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+# ---------------------------------------------------------------------------
 # Event creation — /create_event
 # ---------------------------------------------------------------------------
 
