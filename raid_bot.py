@@ -738,10 +738,12 @@ async def _post_event(interaction: discord.Interaction, temp: dict):
         'boon_limits':         temp['boon_limits'],
         'special_role_limits': temp['special_role_limits'],
         'open_signup':         temp.get('open_signup', False),
+        'creator_id':          interaction.user.id,
         'participants':        {},
         'channel_id':          temp['channel_id'],
         'message_id':          None,
         'status':              'open',
+        'dm_sent':             False,
         'reminded_1h':         False,
         'reminded_30m':        False,
         'point_value':         POINT_VALUES[temp['type']],
@@ -1142,6 +1144,14 @@ async def check_events():
             event['reminded_30m'] = True
             changed = True
 
+        if (not event.get('dm_sent')
+                and event.get('point_value', 0) > 0
+                and event.get('participants')
+                and now_unix >= event_unix + 7200):
+            await _send_attendance_dm(eid, event)
+            event['dm_sent'] = True
+            changed = True
+
     if changed:
         save_data(data)
 
@@ -1156,6 +1166,28 @@ async def _send_reminder(channel, event: dict, time_left: str):
         color=0xff9900
     )
     await channel.send(mentions, embed=embed)
+
+async def _send_attendance_dm(eid: str, event: dict):
+    """DM the event creator 2 hours after start to confirm attendance and award points."""
+    creator_id = event.get('creator_id')
+    if not creator_id:
+        return
+    try:
+        user = await bot.fetch_user(creator_id)
+        embed = discord.Embed(
+            title=f"📋 Attendance Check: {event['name']}",
+            description=(
+                f"This event started 2 hours ago.\n"
+                f"Select who attended to award **{event['point_value']} points** each."
+            ),
+            color=0xf39c12
+        )
+        await user.send(embed=embed, view=AttendanceConfirmView(eid, event))
+    except discord.Forbidden:
+        print(f"Could not DM creator for event {eid} — DMs likely disabled.")
+    except Exception as e:
+        print(f"Failed to send attendance DM for event {eid}: {e}")
+
 
 # ---------------------------------------------------------------------------
 # Lottery system
