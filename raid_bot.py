@@ -44,6 +44,9 @@ DATA_FILE = '/data/kds_bot_data.json'  # Railway volume mount path
 POINT_VALUES = {
     'raid': 20,
     'normal': 10,
+    'guild_mission': 10,
+    'fractal': 0,
+    'social': 0,
 }
 
 BOSS_TEMPLATES = {
@@ -175,7 +178,8 @@ ROLE_EMOJIS = {'Tank': '🛡️', 'Heal': '💚', 'DPS': '⚔️'}
 
 def create_event_embed(event: dict, event_id: str) -> discord.Embed:
     """Build the public event embed shown in the channel."""
-    title_emoji = '⚔️' if event['type'] == 'raid' else '🎮'
+    type_emojis = {'raid': '⚔️', 'fractal': '🌀', 'guild_mission': '🏰', 'social': '🎉', 'normal': '🎮'}
+    title_emoji = type_emojis.get(event['type'], '🎮')
     ts          = event['unix_ts']
     # Discord renders <t:unix:F> in each viewer's local timezone automatically
     time_str    = f"{unix_to_discord_ts(ts, 'F')}  ({unix_to_discord_ts(ts, 'R')})"
@@ -190,21 +194,29 @@ def create_event_embed(event: dict, event_id: str) -> discord.Embed:
 
     participants = event.get('participants', {})
 
-    for role in ['Tank', 'Heal', 'DPS']:
-        limit = event['role_limits'].get(role, 0)
-        if limit == 0:
-            continue
-        role_ps = [p for p in participants.values() if p['role'] == role]
-        count   = len(role_ps)
-        lines   = []
-        for p in role_ps:
-            boon_tag = f" [{p['boon']}]" if p.get('boon') else ""
-            lines.append(f"{p['name']}{boon_tag}")
+    if event.get('open_signup'):
+        attendees = [p['name'] for p in participants.values()]
         embed.add_field(
-            name=f"{ROLE_EMOJIS[role]} {role} ({count}/{limit})",
-            value="\n".join(lines) if lines else "*(empty)*",
+            name=f"👥 Attendees ({len(attendees)})",
+            value="\n".join(attendees) if attendees else "*(none yet)*",
             inline=False
         )
+    else:
+        for role in ['Tank', 'Heal', 'DPS']:
+            limit = event['role_limits'].get(role, 0)
+            if limit == 0:
+                continue
+            role_ps = [p for p in participants.values() if p['role'] == role]
+            count   = len(role_ps)
+            lines   = []
+            for p in role_ps:
+                boon_tag = f" [{p['boon']}]" if p.get('boon') else ""
+                lines.append(f"{p['name']}{boon_tag}")
+            embed.add_field(
+                name=f"{ROLE_EMOJIS[role]} {role} ({count}/{limit})",
+                value="\n".join(lines) if lines else "*(empty)*",
+                inline=False
+            )
 
     # Special roles — show individual numbered slots
     special_limits = event.get('special_role_limits', {})
@@ -219,7 +231,9 @@ def create_event_embed(event: dict, event_id: str) -> discord.Embed:
                 special_lines.append(f"**{role}** ({i+1}/{limit})  {name}")
         embed.add_field(name="🎯 Special Roles", value="\n".join(special_lines), inline=False)
 
-    embed.set_footer(text=f"Event ID: {event_id}  •  {POINT_VALUES[event['type']]} points on attendance")
+    point_val = POINT_VALUES.get(event['type'], 0)
+    pts_text  = f"{point_val} points on attendance" if point_val > 0 else "No points"
+    embed.set_footer(text=f"Event ID: {event_id}  •  {pts_text}")
     return embed
 
 
@@ -250,6 +264,16 @@ class EventView(discord.ui.View):
             return
         if event['status'] != 'open':
             await interaction.response.send_message("❌ This event is closed.", ephemeral=True)
+            return
+        if event.get('open_signup'):
+            uid = str(interaction.user.id)
+            event['participants'][uid] = {
+                'name': interaction.user.display_name,
+                'role': 'Attendee', 'boon': None, 'special_role': None
+            }
+            save_data(data)
+            await interaction.response.send_message("✅ You're signed up!", ephemeral=True)
+            await _refresh_event_embed(event, self.event_id)
             return
         await interaction.response.send_message(
             "**Select your role:**",
@@ -561,15 +585,35 @@ class WingSelect(discord.ui.Select):
             discord.SelectOption(label="W5 - Hall of Chains",             emoji="⚔️"),
             discord.SelectOption(label="W6 - Mythwright Gambit",          emoji="⚔️"),
             discord.SelectOption(label="W7 - Key of Ahdashim",            emoji="⚔️"),
-            discord.SelectOption(label="Other (Fractals, WvW, etc.)",     emoji="🎮", value="Other"),
+            discord.SelectOption(label="Fractals",                        emoji="🌀"),
+            discord.SelectOption(label="Guild Missions",                  emoji="🏰"),
+            discord.SelectOption(label="Hang Out / Other Games",          emoji="🎉"),
+            discord.SelectOption(label="Other",                           emoji="🎮"),
         ]
-        super().__init__(placeholder="Select a wing or Other...", options=options)
+        super().__init__(placeholder="Select event type...", options=options)
 
     async def callback(self, interaction: discord.Interaction):
         selected = self.values[0]
         self.temp['wing'] = selected
 
-        if selected == "Other":
+        if selected == "Fractals":
+            self.temp['type'] = 'fractal'
+            self.temp['boss'] = 'Fractals'
+            self.temp['role_limits'] = {'Tank': 0, 'Heal': 1, 'DPS': 4}
+            self.temp['boon_limits'] = {'Alacrity': 1, 'Quickness': 1}
+            self.temp['special_role_limits'] = {}
+            embed = _role_review_embed(self.temp)
+            await interaction.response.edit_message(embed=embed, view=RoleReviewView(self.temp))
+        elif selected in ("Guild Missions", "Hang Out / Other Games"):
+            self.temp['type'] = 'guild_mission' if selected == "Guild Missions" else 'social'
+            self.temp['boss'] = None
+            self.temp['open_signup'] = True
+            self.temp['role_limits'] = {}
+            self.temp['boon_limits'] = {}
+            self.temp['special_role_limits'] = {}
+            embed = _creation_embed(self.temp, "Step 3 of 3: Confirm & Post")
+            await interaction.response.edit_message(embed=embed, view=RoleReviewView(self.temp))
+        elif selected == "Other":
             self.temp['type'] = 'normal'
             self.temp['boss'] = None
             embed = _creation_embed(self.temp, "Step 3 of 4: Set Role Slots")
@@ -693,6 +737,7 @@ async def _post_event(interaction: discord.Interaction, temp: dict):
         'role_limits':         temp['role_limits'],
         'boon_limits':         temp['boon_limits'],
         'special_role_limits': temp['special_role_limits'],
+        'open_signup':         temp.get('open_signup', False),
         'participants':        {},
         'channel_id':          temp['channel_id'],
         'message_id':          None,
