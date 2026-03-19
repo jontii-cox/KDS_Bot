@@ -1421,7 +1421,7 @@ async def pizza_command(interaction: discord.Interaction):
                     content = f'"{data[0]["q"]}" — {data[0]["a"]}'
             elif category == 2:
                 async with session.get(
-                    "https://www.reddit.com/r/Showerthoughts/top.json?limit=25&t=week",
+                    "https://www.reddit.com/r/DepressingFacts/top.json?limit=25&t=week",
                     headers={"User-Agent": "KDS-Bot/1.0"}
                 ) as resp:
                     data = await resp.json()
