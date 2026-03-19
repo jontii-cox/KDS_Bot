@@ -7,6 +7,7 @@ import json
 import random
 from threading import Thread
 import socket
+import aiohttp
 
 # ---------------------------------------------------------------------------
 # HTTP keepalive server for Railway
@@ -1399,6 +1400,40 @@ async def status_command(interaction: discord.Interaction):
     embed.add_field(name="⏰ Reminders", value="Running ✅" if check_events.is_running() else "Stopped ❌", inline=True)
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="pizza", description="Spin the wheel")
+async def pizza_command(interaction: discord.Interaction):
+    await interaction.response.defer()
+    if interaction.user.id == 271986635674091531:
+        category = random.randint(0, 1)  # dad joke or motivational only (no insults or despair)
+    else:
+        category = random.randint(0, 3)
+    try:
+        async with aiohttp.ClientSession() as session:
+            if category == 0:
+                async with session.get("https://icanhazdadjoke.com/", headers={"Accept": "application/json"}) as resp:
+                    data = await resp.json()
+                    content = data["joke"]
+            elif category == 1:
+                async with session.get("https://zenquotes.io/api/random") as resp:
+                    data = await resp.json()
+                    content = f'"{data[0]["q"]}" — {data[0]["a"]}'
+            elif category == 2:
+                async with session.get(
+                    "https://www.reddit.com/r/Showerthoughts/top.json?limit=25&t=week",
+                    headers={"User-Agent": "KDS-Bot/1.0"}
+                ) as resp:
+                    data = await resp.json()
+                    posts = data["data"]["children"]
+                    content = random.choice(posts)["data"]["title"]
+            else:
+                async with session.get("https://evilinsult.com/generate_insult.php?lang=en&type=json") as resp:
+                    data = await resp.json()
+                    content = data["insult"]
+    except Exception:
+        content = "Something went wrong. The universe is as broken as your build."
+    await interaction.followup.send(content)
 
 
 @bot.tree.command(name="help", description="Show available commands")
