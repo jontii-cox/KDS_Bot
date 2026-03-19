@@ -1402,7 +1402,7 @@ async def status_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="pizza", description="Spin the wheel")
+@bot.tree.command(name="pizza", description="Sometimes motivational...sometimes funny and sometimes not.")
 async def pizza_command(interaction: discord.Interaction):
     await interaction.response.defer()
     if interaction.user.id == 271986635674091531:
